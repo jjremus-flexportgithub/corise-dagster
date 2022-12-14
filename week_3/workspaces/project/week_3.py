@@ -127,14 +127,16 @@ def week_3_schedule_docker():
         request = week_3_pipeline_docker.run_request_for_partition(partition_key=mo,run_key=mo)
         yield request
 
-@sensor
-def week_3_sensor_docker():
-    new_files = get_s3_keys(bucket=None, prefix=None, endpoint_url=None,
-    since_key=None)
+@sensor(job=week_3_pipeline_docker)
+def week_3_sensor_docker(context):
+    last_file = context.cursor if context.cursor else None
+    new_files = get_s3_keys(bucket='dagster', prefix='prefix', endpoint_url='http://localstack:4566', since_key=last_file)
     if len(new_files)==0:
-        yield SkipReason("No new s3 files found in bucket")
+        print('No new s3 files')
+        yield SkipReason("No new s3 files found in bucket.")
     else:
         for s3_key in new_files:
             tmp_conf = docker.copy()
             tmp_conf['ops']['get_s3_data']['config']["s3_key"] = s3_key
-            RunRequest(run_key=s3_key,run_config=tmp_conf)
+            yield RunRequest(run_key=s3_key,run_config=tmp_conf,tags={},job_name=None)
+        context.update_cursor(new_files[-1])
